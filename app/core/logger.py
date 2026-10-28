@@ -38,14 +38,20 @@ class MaskingFormatter(logging.Formatter):
 def setup_logging(level: int = logging.INFO) -> None:
     """初始化根 logger（幂等：已有 handler 时不重复配置）。"""
     root = logging.getLogger()
-    if root.handlers:
-        return
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        MaskingFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-    )
-    root.addHandler(handler)
-    root.setLevel(level)
+    if not root.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            MaskingFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        root.addHandler(handler)
+        root.setLevel(level)
+    # uvicorn 自带 handler 会绕过脱敏 Formatter 直接打印 traceback
+    # （Starlette ServerErrorMiddleware 处理异常后仍 re-raise，uvicorn 层再次输出），
+    # 清空其 handler 并 propagate 到 root，让全部输出统一经脱敏（细则 9）。
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
 
 
 def get_logger(name: str) -> logging.Logger:
