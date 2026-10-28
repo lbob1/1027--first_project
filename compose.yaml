@@ -1,0 +1,3 @@
+# MiniKnora 基础服务编排（M-S0-T01 占位文件）
+# M-S0-T02 将填充 PostgreSQL(pgvector/pgvector:pg16) + Redis + MinIO 三服务定义（含健康检查与持久化卷）。
+services: {}
