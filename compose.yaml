@@ -1,3 +1,70 @@
-# MiniKnora 基础服务编排（M-S0-T01 占位文件）
-# M-S0-T02 将填充 PostgreSQL(pgvector/pgvector:pg16) + Redis + MinIO 三服务定义（含健康检查与持久化卷）。
-services: {}
+# MiniKnora 基础服务编排（M-S0-T02）
+# 三基础服务完整复用原项目选型：PostgreSQL(pgvector) / Redis / MinIO，禁止替换组件（00 文件第二节）。
+# 凭据经仓库根 .env 注入（docker compose 自动读取 .env 做变量插值），本文件不含任何明文密码。
+# 所需变量（只列名）：POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD
+# 镜像版本说明：MinIO 固定 tag 曾选 2025-04-22 版，因国内镜像加速器对其 blob 返回 403（许可证限制），
+# 改用可正常拉取的 RELEASE.2024-06-13T22-53-53Z（仍为官方 minio/minio 镜像，功能满足本项目需求）。
+
+services:
+  pg:
+    image: pgvector/pgvector:pg16
+    container_name: miniknora-pg
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?请在.env中配置 POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在.env中配置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?请在.env中配置 POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - miniknora
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: miniknora-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - miniknora
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    container_name: miniknora-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?请在.env中配置 MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请在.env中配置 MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - miniknora
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+
+networks:
+  miniknora:
+    driver: bridge
