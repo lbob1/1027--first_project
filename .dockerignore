@@ -1,0 +1,32 @@
+# MiniKnora Docker 构建上下文忽略清单（M-S0-T03，S6-T01 容器化时生效）。
+# 目标：凭据与无关文件不进镜像层 + 构建上下文瘦身。
+
+# 凭据与环境（细则 9：凭据不入镜像，运行时注入）
+.env
+.env.*
+!.env.example
+
+# 版本控制与 IDE
+.git
+.gitignore
+.idea
+
+# Python 运行产物
+.venv
+__pycache__
+*.pyc
+*.py[oc]
+.pytest_cache
+.ruff_cache
+
+# 教学资料与开发目录（不参与运行镜像）
+references/
+docs/
+tests/
+eval/
+STATUS.md
+MiniKnora_任务计划表.md
+
+# 容器编排自身与工作区配置
+compose.yaml
+.trae
