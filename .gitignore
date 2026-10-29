@@ -13,3 +13,4 @@ docs/teaching/**
 
 .env
 .idea/
+.pytest_cache/
