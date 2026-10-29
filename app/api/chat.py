@@ -3,9 +3,11 @@
 POST /api/v1/workspaces/{workspace_id}/chat，body {question, top_k?}：
 - 成员判定：非 workspace 成员 → KN-404（细则 1，不泄露跨区存在性）；
   question 空 → KN-400；
-- StreamingResponse（text/event-stream）三段事件：
+- StreamingResponse（text/event-stream）事件序列：
   event: sources（JSON 溯源：六字段+rrf_score+relevance_score）→
-  多个 event: token → event: done；
+  多个 event: token → event: budget（T04）→ event: trace（T06，done 前）
+  → event: done；审批挂起 run 专有 event: approval_required（T05，
+  随后 trace→done，无 token/budget）；
 - X-User-ID dev 过渡头（S5 换 JWT，与既有 API 一致）；
 - **messages 落库**：答案流出完成后同事务写一条（thread_id=本请求 uuid，
   role='assistant'，content=完整答案，citations=sources）；落库失败不影响
@@ -123,6 +125,8 @@ async def chat(
         if "approval_required" in payload:  # T05：删除审批挂起（本 run 无 token/budget）
             suspended = True
             return _sse("approval_required", payload["approval_required"])
+        if "trace" in payload:  # T06：结构化 Trace（done 前最后事件，转发即可）
+            return _sse("trace", payload["trace"])
         if "sources" in payload:
             sources = payload["sources"]
             return _sse("sources", {"sources": sources})

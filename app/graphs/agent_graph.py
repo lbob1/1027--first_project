@@ -44,7 +44,20 @@ stream_answer 恢复路径先 get_state 预检 pending interrupt，缺失即 KN-
 generate 流前预检 + 流中字符估算 + 流后终校；删除执行前 record_tool_call。
 超限抛 KN-429 两种流出形态见 chat.py（流出前→HTTP 429；中途→event: error）。
 
-消息内容/查询词/凭据不入日志（细则 9）；模块导入零网络请求。
+**RunTracer（T06）**：stream_answer 每 run 创建 RunTracer（经 config
+["configurable"]["tracer"] 注入节点）：节点入口 mark（链式结算逐节点
+耗时）、工具结果 record_tool（参数只记 key 集合）、特殊事件 record_event
+（approval_pending/approval_approved/approval_rejected、budget_exceeded、
+run_interrupted、policy_blocked、router_fallback）。run 结束（正常/挂起/
+中断均算结束）统一 finish_and_log：log.info 一行结构化 JSON + yield
+{"trace"} → SSE event: trace（done 前；budget 保持独立事件，Trace 为
+超集）。**流出前超限（HTTP 429 形态）不 yield trace 只落日志**——保持
+T04 实证的"headers 未发→纯 JSON 429"行为。**观测缺失项**：rerank 不在
+本图链路（retrieve 走 hybrid_search 工具，T03 起未接 rerank），降级无
+观测点，本 run 能拿到什么记什么。
+
+消息内容/查询词/凭据不入日志（细则 9）；Trace 字段白名单见 trace.py；
+模块导入零网络请求。
 """
 
 import logging
@@ -69,6 +82,7 @@ from app.core.errors import AppError
 from app.core.gateway import ModelGateway
 from app.core.policy import PolicyEngine
 from app.core.tool_registry import build_default_registry
+from app.core.trace import RunTracer, finish_and_log, safe_error_type
 
 log = logging.getLogger("app.graphs.agent_graph")
 
@@ -114,6 +128,9 @@ class AgentState(TypedDict):
 def _router(state: AgentState, config) -> dict:
     """LLM 三分类；解析失败/异常一律保守 search。"""
     gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
+    tracer = config["configurable"].get("tracer")  # T06
+    if tracer:
+        tracer.mark("router")
     try:
         resp = gw.chat(
             [{"role": "system", "content": _ROUTER_SYSTEM},
@@ -132,6 +149,8 @@ def _router(state: AgentState, config) -> dict:
         if isinstance(exc, AppError):
             raise
         log.warning("router 判断失败（%s），保守走检索路径", type(exc).__name__)
+        if tracer:  # T06：router 兜底事件（只记异常类型名，细则 9）
+            tracer.record_event("router_fallback", {"error_type": type(exc).__name__})
         intent = "search"
     log.info("router intent=%s", intent)
     return {"intent": intent}
@@ -139,12 +158,17 @@ def _router(state: AgentState, config) -> dict:
 
 def _retrieve(state: AgentState, config) -> dict:
     gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
+    tracer = config["configurable"].get("tracer")  # T06
+    if tracer:
+        tracer.mark("retrieve")
     spec = _registry.get("hybrid_search")
     arguments = {"query": state["question"], "top_k": state["top_k"]}
     decision = _policy.check(spec, arguments=arguments)
     if not decision.allowed:
         # 正常只读工具不会被拦；拦截属策略异常，hits 置空并记 reason 供观测
         log.warning("policy 拦截检索工具 tool=%s reason=%s", spec.name, decision.reason)
+        if tracer:  # T06：策略拦截事件（reason 为固定策略文案，无内容）
+            tracer.record_event("policy_blocked", {"tool": spec.name, "reason": decision.reason})
         return {"hits": []}
     budget.record_tool_call()  # T04：调工具前计数（超限 KN-429 在执行前拦截）
     with get_session() as session:
@@ -153,6 +177,13 @@ def _retrieve(state: AgentState, config) -> dict:
             workspace_id=state["workspace_id"],
         )
     hits = result.get("results", [])
+    if tracer:  # T06：工具结果（参数只记 key 集合，错误只记 KN 码）
+        err = result.get("error")
+        tracer.record_tool(
+            spec.name, ok=err is None, result_count=0 if err else len(hits),
+            error_type=safe_error_type(err) if err else None,
+            arg_keys=list(arguments),
+        )
     log.info("retrieve hits=%d", len(hits))
     return {"hits": hits}
 
@@ -165,6 +196,9 @@ def _delete_prepare(state: AgentState, config) -> dict:
     approval_payload，经条件边直达 generate（fail-safe：不删除任何东西）。
     """
     gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
+    tracer = config["configurable"].get("tracer")  # T06
+    if tracer:
+        tracer.mark("delete_prepare")
     writer = get_stream_writer()
     try:
         resp = gw.chat(
@@ -203,6 +237,8 @@ def _delete_prepare(state: AgentState, config) -> dict:
             session, workspace_id=state["workspace_id"],
             thread_id=state["thread_id"] or "", event=EVENT_PENDING, payload=payload,
         )
+    if tracer:  # T06：挂起事件（payload 含 filename 参数值不入 Trace，只记工具名）
+        tracer.record_event("approval_pending", {"tool": spec.name, "arg_keys": sorted(arguments)})
     log.info("delete 审批挂起 filename_key=%s", sorted(payload.keys()))
     return {"delete_filename": filename, "approval_payload": payload}
 
@@ -215,6 +251,9 @@ def _approve_and_delete(state: AgentState, config) -> dict:
     audit(rejected) 不执行。结果一律经 tool_notice 交 generate 转述。
     """
     gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
+    tracer = config["configurable"].get("tracer")  # T06
+    if tracer:
+        tracer.mark("approve_and_delete")
     payload = state.get("approval_payload") or {}
     resume = interrupt(payload)  # 挂起；恢复时本行返回 confirm 值
     approved = _approval.parse_confirm(resume)
@@ -223,6 +262,11 @@ def _approve_and_delete(state: AgentState, config) -> dict:
         _approval.audit(
             session, workspace_id=state["workspace_id"],
             thread_id=state["thread_id"] or "", event=event, payload=payload,
+        )
+    if tracer:  # T06：审批结论事件（只记工具名，不含 filename 参数值）
+        tracer.record_event(
+            "approval_approved" if approved else "approval_rejected",
+            {"tool": payload.get("tool", ""), "arg_keys": ["filename"]},
         )
     filename = payload.get("filename", "")
     if not approved:
@@ -233,18 +277,26 @@ def _approve_and_delete(state: AgentState, config) -> dict:
             "收到确认请求后同意。不要提及资料或检索。"
         )}
     budget.record_tool_call()  # 执行前计数（超限 KN-429，语义与 T04 一致）
+    arguments = {"filename": filename}
     with get_session() as session:
         result = _registry.execute(
-            session, name="delete_document", arguments={"filename": filename},
+            session, name="delete_document", arguments=arguments,
             workspace_id=state["workspace_id"], user_id=state.get("user_id"),
         )
     if "error" in result:
         # 定位不到（隔离）/KN-409 有版本阻断等：转述不崩（删除语义见 fn docstring）
         log.info("delete 执行未成功 err_keys=%s", sorted(result.keys()))
+        if tracer:  # T06：失败工具记录（错误只记 KN 码，消息正文含文件名不入）
+            tracer.record_tool("delete_document", ok=False, result_count=0,
+                               error_type=safe_error_type(result["error"]),
+                               arg_keys=sorted(arguments))
         return {"tool_notice": (
             f"系统执行结果：删除「{filename}」未成功，原因：{result['error']}。"
             "请直接据此回复用户，告知删除失败及上述原因；不要提及资料或检索。"
         )}
+    if tracer:
+        tracer.record_tool("delete_document", ok=True, result_count=1,
+                           arg_keys=sorted(arguments))
     log.info("delete 执行成功")
     return {"tool_notice": (
         f"系统执行结果：文档「{filename}」已成功删除。"
@@ -270,6 +322,9 @@ def _identity_for(state: AgentState) -> str:
 
 def _generate(state: AgentState, config) -> dict:
     gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
+    tracer = config["configurable"].get("tracer")  # T06
+    if tracer:
+        tracer.mark("generate")
     writer = get_stream_writer()
     writer({"sources": state["hits"]})  # 事件协议：sources 先行（闲聊/删除为空数组）
     with get_session() as session:
@@ -339,8 +394,8 @@ def stream_answer(
     user_id: uuid.UUID | None = None,
     confirm: bool | None = None,
 ):
-    """Agent 问答流：{'sources'} → {'token'}×N → {'budget'}；
-    delete 分支挂起 run：{'approval_required'} 后结束（无 budget 事件）。
+    """Agent 问答流：{'sources'} → {'token'}×N → {'budget'} → {'trace'}；
+    delete 分支挂起 run：{'approval_required'} → {'trace'}（无 token/budget）。
 
     每 run 新建 ModelGateway（用量隔离，client 懒创建共享）与 BudgetManager
     （无参则用模块默认限额）；budget 参数供测试/部署层注入小限额。
@@ -350,15 +405,24 @@ def stream_answer(
     缺失 KN-400；LangGraph 对无挂起 thread 的 resume 不报错而是重跑图，
     预检避免重复挂起/重复审计）。恢复经 Command(resume=confirm) 从
     checkpoint 继续，gateway/budget 为本 run 新实例（run 级用量隔离）。
+
+    trace（T06）：每 run 配对创建 RunTracer 注入节点；run 结束（正常/
+    挂起/中断均算结束）统一 finish_and_log——log.info 一行 JSON + yield
+    {"trace"}（done 前）。中断（AppError）路径：已 yield 过事件才补发
+    trace（SSE 已流出无法改状态码）；**流出前超限不 yield**——保持 T04
+    实证的"headers 未发→HTTP 429 纯 JSON"行为，trace 只落日志。
     """
     gateway = ModelGateway()
     budget = budget or BudgetManager()
     if confirm is not None and not thread_id:
         raise AppError("KN-400", "恢复审批请求必须携带 thread_id")
     tid = thread_id or uuid.uuid4().hex
-    config = {"configurable": {"gateway": gateway, "budget": budget, "thread_id": tid}}
+    tracer = RunTracer()  # T06：与 gateway/budget 同生命周期
+    tracer.start(tid, workspace_id)
+    config = {"configurable": {"gateway": gateway, "budget": budget,
+                               "thread_id": tid, "tracer": tracer}}
     if confirm is None:
-        yield from graph.stream(
+        streams = graph.stream(
             {"question": question, "workspace_id": workspace_id, "thread_id": tid,
              "user_id": user_id, "identity": identity, "top_k": top_k,
              "intent": "search", "hits": [], "answer": "",
@@ -366,10 +430,30 @@ def stream_answer(
             config=config,
             stream_mode="custom",
         )
-        return
-    # 恢复路径：预检 pending interrupt（见 docstring 边界行为说明）
-    snap = graph.get_state(config)
-    if not any(t.interrupts for t in snap.tasks):
-        log.warning("审批恢复预检失败 thread_id=%s（无挂起）", thread_id)
-        raise AppError("KN-400", "该会话没有待确认的删除审批")
-    yield from graph.stream(Command(resume=confirm), config=config, stream_mode="custom")
+    else:
+        # 恢复路径：预检 pending interrupt（见 docstring 边界行为说明）
+        snap = graph.get_state(config)
+        if not any(t.interrupts for t in snap.tasks):
+            log.warning("审批恢复预检失败 thread_id=%s（无挂起）", thread_id)
+            raise AppError("KN-400", "该会话没有待确认的删除审批")
+        streams = graph.stream(Command(resume=confirm), config=config, stream_mode="custom")
+
+    emitted = False
+    try:
+        for ev in streams:  # graph.stream 为惰性生成器，异常在迭代时抛出
+            emitted = True
+            yield ev
+    except AppError as exc:
+        # 中断也属 run 结束（T06）：记录中断事件并照常落 Trace。
+        # 已有事件流出才补发 trace 事件（其后 chat.py 追加 error+done）；
+        # 流出前超限保持纯 JSON 429 形态，trace 只进日志
+        tracer.record_event("run_interrupted", {"code": exc.code})
+        if exc.code == "KN-429":
+            tracer.record_event("budget_exceeded", {})
+        data = finish_and_log(tracer, gateway, budget)
+        if emitted and data is not None:
+            yield {"trace": data}
+        raise
+    data = finish_and_log(tracer, gateway, budget)  # 硬约束：失败返回 None 不影响主流程
+    if data is not None:
+        yield {"trace": data}
