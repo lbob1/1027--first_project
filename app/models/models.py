@@ -146,11 +146,15 @@ class Chunk(Base):
     version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.version_id"))
     seq_no: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
+    # 方案 B（M-S3-T01，用户确认）：入库侧 jieba 预分词（空格连接），
+    # tsv 生成列从该列取词——'simple' 配置不做中文分词，直接对 content
+    # 建索引时整句成单 token，中文子串查询零召回（探针实证）。
+    content_tokens: Mapped[str] = mapped_column(Text)
     content_hash: Mapped[str] = mapped_column(String(64))
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
-    # 生成列：由 content 自动维护，插入/更新时不可显式写值
+    # 生成列：由 content_tokens 自动维护，插入/更新时不可显式写值
     tsv: Mapped[Any] = mapped_column(
-        TSVECTOR, Computed("to_tsvector('simple', content)", persisted=True)
+        TSVECTOR, Computed("to_tsvector('simple', content_tokens)", persisted=True)
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

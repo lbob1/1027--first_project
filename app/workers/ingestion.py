@@ -144,6 +144,9 @@ def _do_ingest(version_id: str) -> dict:
                     version_id=vid,  # document 归属经 version 间接（chunks 表无 document_id）
                     seq_no=len(rows),  # 去重后连续序号
                     content=piece,
+                    # 方案 B（M-S3-T01）：jieba 预分词供 tsv 生成列取词，
+                    # 与查询侧共用 chunker.tokenize_text（两侧 lexeme 一致）
+                    content_tokens=chunker.tokenize_text(piece),
                     content_hash=chunk_hash,
                     embedding=vec,  # tsv 由生成列自动填充，不显式写
                 )

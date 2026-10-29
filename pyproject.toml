@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "unidream", email = "tianqihou@qq.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"  # <3.14：jieba 0.42.2 仅 sdist，为 3.14 构建 sdist 失败（S3-T01，项目实际运行 3.12）
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
@@ -22,6 +22,7 @@ dependencies = [
     "celery[redis]>=5.4",
     "openai>=1.40",
     "python-multipart>=0.0.9",
+    "jieba==0.42.1",
 ]
 
 [build-system]
@@ -33,3 +34,7 @@ dev = [
     "ruff>=0.17.3",
     "pytest>=8.0",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
