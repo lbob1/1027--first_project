@@ -132,14 +132,19 @@ def _do_ingest(version_id: str) -> dict:
         if fresh.status != "staging":  # 双保险：并发摄取已被其他 worker 完成
             return {"version_id": version_id, "skipped": True, "status": fresh.status}
         rows = []
+        seen_hashes: set[str] = set()  # M-S2-T05：chunk 级去重（仅限单版本内，O-2）
         for seq, (piece, vec) in enumerate(zip(pieces, vectors)):
+            chunk_hash = hashlib.sha256(piece.encode("utf-8")).hexdigest()
+            if chunk_hash in seen_hashes:
+                continue
+            seen_hashes.add(chunk_hash)
             rows.append(
                 Chunk(
                     workspace_id=ws_id,
                     version_id=vid,  # document 归属经 version 间接（chunks 表无 document_id）
-                    seq_no=seq,
+                    seq_no=len(rows),  # 去重后连续序号
                     content=piece,
-                    content_hash=hashlib.sha256(piece.encode("utf-8")).hexdigest(),
+                    content_hash=chunk_hash,
                     embedding=vec,  # tsv 由生成列自动填充，不显式写
                 )
             )
