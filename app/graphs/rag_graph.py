@@ -23,18 +23,14 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, START, END
 
 from app.core.config import get_settings
+from app.core.context import RAG_SYSTEM_PROMPT as _SYSTEM_PROMPT  # 单一来源：权威在 context.py（M-S4-T01）
+from app.core.context import build_evidence_block as _build_context  # 同上，转发保持内部引用点不变
 from app.core.db import get_session
 from app.services.embedding import _get_client
 from app.services.rerank import rerank_documents
 from app.services.retrieval_hybrid import search_hybrid
 
 log = logging.getLogger("app.graphs.rag_graph")
-
-_SYSTEM_PROMPT = (
-    "你是企业知识库问答助手。仅依据下面提供的资料回答用户问题；"
-    "资料不足以回答时，明确说明资料中未涉及，不要编造。"
-    "回答末尾另起一行，用【来源: 文件名】列出所引用的资料文件名。"
-)
 
 
 class RagState(TypedDict):
@@ -57,14 +53,6 @@ def _retrieve(state: RagState) -> dict:
     reranked = rerank_documents(state["question"], hits, top_n=state["top_k"])
     writer({"sources": reranked})  # 先流出溯源事件
     return {"hits": reranked}
-
-
-def _build_context(hits: list[dict]) -> str:
-    blocks = [
-        f"[资料{i}] 文件: {h['filename']} (版本 v{h['version_no']})\n{h['content']}"
-        for i, h in enumerate(hits, start=1)
-    ]
-    return "\n\n".join(blocks) if blocks else "（无检索结果）"
 
 
 def _generate(state: RagState) -> dict:
