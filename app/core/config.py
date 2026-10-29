@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # ---------- 上传限制 ----------
     MAX_UPLOAD_MB: int = 20  # 单文件大小上限（MB），S2-T06 早期快速失败用
 
+    # ---------- Rerank（M-S3-T04：DashScope 原生端点，不在 compatible-mode） ----------
+    RERANK_MODEL: str = "gte-rerank-v2"  # 老 gte-rerank 部分账号未开通（403 AccessDenied，T04 实测）
+    RERANK_ENABLED: bool = True  # false 整体跳过精排（降级为 rrf_score 原序）
+
     # ---------- 认证（S5 起使用） ----------
     JWT_SECRET_KEY: str = ""
 

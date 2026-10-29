@@ -33,9 +33,11 @@ app = FastAPI(title="MiniKnora")
 
 from app.api.status import router as status_router  # noqa: E402
 from app.api.documents import router as documents_router  # noqa: E402
+from app.api.chat import router as chat_router  # noqa: E402
 
 app.include_router(status_router)  # M-S2-T03：摄取状态查询
-app.include_router(documents_router)  # M-S2-T06：上传 API（本任务唯一 main.py 改动）
+app.include_router(documents_router)  # M-S2-T06：上传 API
+app.include_router(chat_router)  # M-S3-T04：SSE 流式问答（本任务唯一 main.py 改动）
 
 
 @app.get("/healthz")

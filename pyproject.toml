@@ -23,6 +23,8 @@ dependencies = [
     "openai>=1.40",
     "python-multipart>=0.0.9",
     "jieba==0.42.1",
+    "langgraph>=1.2.18",
+    "httpx>=0.28.1",
 ]
 
 [build-system]
