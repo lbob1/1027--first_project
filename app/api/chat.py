@@ -26,7 +26,7 @@ from sqlalchemy import select
 from app.core.db import get_session
 from app.core.errors import AppError
 from app.models.models import Message, WorkspaceMember
-from app.graphs.rag_graph import stream_answer
+from app.graphs.agent_graph import stream_answer  # M-S4-T03：Agent Graph（Router）切换
 
 router = APIRouter(prefix="/api/v1")  # 与 status/documents 路由同前缀
 log = logging.getLogger("app.api.chat")
@@ -35,6 +35,7 @@ log = logging.getLogger("app.api.chat")
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
+    thread_id: str | None = Field(default=None)  # 传入则复用会话历史（多轮指代）
 
 
 def _require_member(session, *, user_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
@@ -64,13 +65,16 @@ async def chat(
     with get_session() as session:
         _require_member(session, user_id=user_id, workspace_id=workspace_id)
 
-    thread_id = uuid.uuid4().hex
+    thread_id = body.thread_id or uuid.uuid4().hex
 
     def event_stream():
         tokens: list[str] = []
         sources: list[dict] | None = None
         try:
-            for payload in stream_answer(workspace_id, body.question, body.top_k):
+            for payload in stream_answer(
+                workspace_id, body.question,
+                thread_id=thread_id, top_k=body.top_k,
+            ):
                 if "sources" in payload:
                     sources = payload["sources"]
                     yield _sse("sources", {"sources": sources})
