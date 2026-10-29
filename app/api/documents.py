@@ -72,5 +72,8 @@ async def upload_document(
     if result["status"] == "accepted":
         task = ingest_version.delay(result["version_id"])
         result["task_id"] = task.id
+    # T06 事件③复核修复：补 document_id（00 契约未细定义 data 字段，
+    # 属向后兼容增强——客户端需凭它追加版本/查状态，缺它链路断）
+    result["document_id"] = str(document_id)
     log.info("upload api done document=%s status=%s", document_id, result["status"])
     return {"code": "KN-000", "message": "ok", "data": result}
