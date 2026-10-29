@@ -1,8 +1,8 @@
-"""Agent Graph：Router 模式单 Agent + 工具（M-S4-T03）。
+"""Agent Graph：Router 模式单 Agent + 工具（M-S4-T03，M-S4-T04 接预算）。
 
-S4 控制层四组件首次全部接线：ModelGateway（模型调用）、ContextManager
-（上下文装配）、ToolRegistry（工具执行）、PolicyEngine（策略判定）——
-只消费不复制逻辑。
+S4 控制层组件接线：ModelGateway（模型调用）、ContextManager（上下文装配）、
+ToolRegistry（工具执行）、PolicyEngine（策略判定）、BudgetManager（预算，
+T04 接入）——只消费不复制逻辑。
 
 图结构（三节点两分支）：
     START → router ──(need_retrieval=true)──→ retrieve → generate → END
@@ -14,14 +14,27 @@ S4 控制层四组件首次全部接线：ModelGateway（模型调用）、Conte
   （框架层注入 workspace_id，细则 1）；policy 拦截时 hits=[] 并 log.warning
   记拦截 reason（供观测，正常只读工具不会被拦）；
 - generate：load_history(thread_id) → ContextManager.build 装配 →
-  Gateway.chat(stream=True) 逐 token 经 custom writer 发出；事件协议与
-  原 rag_graph 一致：先 {"sources": hits}（闲聊为空数组）再 {"token": ...}。
+  Gateway.chat(stream=True) 逐 token 经 custom writer 发出；事件协议：
+  {"sources": hits} → {"token": ...}×N → **{"budget": snapshot}（T04）**。
 
-**rag_graph.py 已删除**（M-S4-T03）：其职责被 agent_graph + context.py
-完全承接——prompt/证据块单一来源在 context.py，保留双链路会漂移。
+**run 级实例（M-S4-T04 修正既有隐患）**：T01 时 _gateway 是模块级单例，
+其 total_tokens 会跨 run 累加——与"本轮 run 的 token 计数"语义偏离。
+现改为 stream_answer 每 run 创建 ModelGateway + BudgetManager 实例，经
+graph.stream 的 config["configurable"] 注入节点；**图仍保持模块级编译
+常量**（不每次请求重建），运行时差异全部走 config 注入——这是 LangGraph
+的标准做法。Gateway client 经 _get_client 懒创建共享，无连接浪费。
 
-消息内容/查询词/凭据不入日志（细则 9）；模块导入零网络请求
-（Gateway/registry 均懒创建）。
+**预算检查点（T04）**：router/retrieve 每次 Gateway 调用后精确校验
+（usage 已回）；generate 流开始前预检 + 流中按"字符数≈token 数"近似
+估算校验（中文 1 字 ≈ 1 token，偏高估——宁严勿松，理由：流式中途拿不到
+精确 usage，尾块才来）；流结束后以 Gateway 精确值终校。超限抛 KN-429
+中断本 run。两种流出形态（docstring 取舍，chat.py 配合）：
+- 流出前超限（router/retrieve 阶段）：AppError 从 generator 预取阶段冒泡
+  到 API 层 → HTTP 429 + KN-429 JSON；
+- 生成中途超限：SSE 已流出无法改状态码 → chat.py 捕获后发 event: error
+  （code=KN-429）再正常收尾 done。
+
+消息内容/查询词/凭据不入日志（细则 9）；模块导入零网络请求。
 """
 
 import logging
@@ -31,8 +44,10 @@ from typing import Any, TypedDict
 from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, START, END
 
+from app.core.budget import BudgetManager
 from app.core.context import ContextManager, build_evidence_block, load_history
 from app.core.db import get_session
+from app.core.errors import AppError
 from app.core.gateway import ModelGateway
 from app.core.policy import PolicyEngine
 from app.core.tool_registry import build_default_registry
@@ -47,7 +62,7 @@ _ROUTER_SYSTEM = (
     "拿不准时回答 true——多检索一次的代价小于答非所问。只回答 true 或 false。"
 )
 
-_gateway = ModelGateway()
+# 以下三个无状态/只读组件保持模块级共享；gateway 必须每 run 新建（用量隔离，见 docstring）
 _registry = build_default_registry()
 _policy = PolicyEngine()
 _context = ContextManager()
@@ -67,26 +82,31 @@ class AgentState(TypedDict):
 # router 暂与生成共用 CHAT_MODEL（Gateway 内部回落）；后续如需小模型独立调优再引入常量
 
 
-def _router(state: AgentState) -> dict:
+def _router(state: AgentState, config) -> dict:
     """LLM 判断是否检索；解析失败/异常一律保守 true。"""
+    gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
     try:
-        resp = _gateway.chat(
+        resp = gw.chat(
             [{"role": "system", "content": _ROUTER_SYSTEM},
              {"role": "user", "content": state["question"]}],
             temperature=0.0,
         )
+        budget.check_token(gw.total_tokens)  # T04：router 用量精确校验
         text = (resp.choices[0].message.content or "").strip().lower()
         need = text.startswith("true")
         if not need and not text.startswith("false"):
             need = True  # 解析失败保守 true
-    except Exception as exc:  # 路由失败不崩问答
+    except Exception as exc:  # 路由失败不崩问答（KN-429 之外的预算异常如实上抛）
+        if isinstance(exc, AppError):
+            raise
         log.warning("router 判断失败（%s），保守走检索路径", type(exc).__name__)
         need = True
     log.info("router need_retrieval=%s", need)
     return {"need_retrieval": need}
 
 
-def _retrieve(state: AgentState) -> dict:
+def _retrieve(state: AgentState, config) -> dict:
+    gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
     spec = _registry.get("hybrid_search")
     arguments = {"query": state["question"], "top_k": state["top_k"]}
     decision = _policy.check(spec, arguments=arguments)
@@ -94,6 +114,7 @@ def _retrieve(state: AgentState) -> dict:
         # 正常只读工具不会被拦；拦截属策略异常，hits 置空并记 reason 供观测
         log.warning("policy 拦截检索工具 tool=%s reason=%s", spec.name, decision.reason)
         return {"hits": []}
+    budget.record_tool_call()  # T04：调工具前计数（超限 KN-429 在执行前拦截）
     with get_session() as session:
         result = _registry.execute(
             session, name=spec.name, arguments=arguments,
@@ -115,7 +136,8 @@ def _identity_for(state: AgentState) -> str:
     return base
 
 
-def _generate(state: AgentState) -> dict:
+def _generate(state: AgentState, config) -> dict:
+    gw, budget = config["configurable"]["gateway"], config["configurable"]["budget"]
     writer = get_stream_writer()
     writer({"sources": state["hits"]})  # 事件协议：sources 先行（闲聊为空数组）
     with get_session() as session:
@@ -129,11 +151,18 @@ def _generate(state: AgentState) -> dict:
         evidence=build_evidence_block(state["hits"]),
         question=state["question"],
     )
+    budget.check_token(gw.total_tokens)  # 流开始前预检（精确值）
     parts: list[str] = []
-    for tok in _gateway.chat(messages, stream=True):
+    for tok in gw.chat(messages, stream=True):
         parts.append(tok)
         writer({"token": tok})
-    return {"answer": "".join(parts)}
+        # 流中校验：usage 尾块才来，按"字符数≈token 数"估算生成部分（中文 1:1，
+        # 偏高估宁严勿松——超限即中断，避免预算被动穿透）
+        budget.check_token(gw.total_tokens + len("".join(parts)))
+    answer = "".join(parts)
+    budget.check_token(gw.total_tokens)  # 流结束后以尾块精确 usage 终校
+    writer({"budget": budget.snapshot()})  # T04：观测事件（T06 Trace 复用）
+    return {"answer": answer}
 
 
 def _build_graph():
@@ -162,11 +191,18 @@ def stream_answer(
     thread_id: str | None = None,
     identity: str = "",
     top_k: int = 5,
+    budget: BudgetManager | None = None,
 ):
-    """Agent 问答流：产出 {'sources': [...]} 后逐个产出 {'token': ...}。"""
+    """Agent 问答流：{'sources'} → {'token'}×N → {'budget'}。
+
+    每 run 新建 ModelGateway（用量隔离，client 懒创建共享）与 BudgetManager
+    （无参则用模块默认限额）；budget 参数供测试/部署层注入小限额。"""
+    gateway = ModelGateway()
+    budget = budget or BudgetManager()
     yield from graph.stream(
         {"question": question, "workspace_id": workspace_id, "thread_id": thread_id,
          "identity": identity, "top_k": top_k, "need_retrieval": False,
          "hits": [], "answer": ""},
+        config={"configurable": {"gateway": gateway, "budget": budget}},
         stream_mode="custom",
     )

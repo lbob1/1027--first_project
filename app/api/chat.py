@@ -67,20 +67,24 @@ async def chat(
 
     thread_id = body.thread_id or uuid.uuid4().hex
 
+    # 预取第一个事件（sources）：router/retrieve 阶段的预算超限（KN-429）在
+    # 此抛出——此时 StreamingResponse 尚未发出任何字节，AppError 冒泡到全局
+    # 异常处理器返回 HTTP 429 + KN-429 JSON（任务书定义的第一种流出形态）。
+    gen = stream_answer(
+        workspace_id, body.question,
+        thread_id=thread_id, top_k=body.top_k,
+    )
+    first = next(gen)
+    tokens: list[str] = []
+    sources: list[dict] | None = None
+
     def event_stream():
-        tokens: list[str] = []
-        sources: list[dict] | None = None
         try:
-            for payload in stream_answer(
-                workspace_id, body.question,
-                thread_id=thread_id, top_k=body.top_k,
-            ):
-                if "sources" in payload:
-                    sources = payload["sources"]
-                    yield _sse("sources", {"sources": sources})
-                else:
-                    tokens.append(payload["token"])
-                    yield _sse("token", {"token": payload["token"]})
+            payload_iter = iter([first])
+            for payload in payload_iter:
+                yield _dispatch(payload)
+            for payload in gen:
+                yield _dispatch(payload)
             # 问答完成 → messages 落库（失败不影响已流出的答案）；
             # 一条记录同时承载问题与完整答案（任务书 T04 要求）
             try:
@@ -98,8 +102,24 @@ async def chat(
             except Exception:
                 log.exception("messages 落库失败 thread_id=%s（答案不受影响）", thread_id)
             yield _sse("done", {})
+        except AppError as exc:
+            # 生成中途预算超限（第二种流出形态）：SSE 已流出无法改状态码，
+            # 追加 event: error 后正常收尾 done（服务不崩，下一请求正常）
+            log.warning("run 中断 thread_id=%s code=%s", thread_id, exc.code)
+            yield _sse("error", {"code": exc.code, "message": exc.message})
+            yield _sse("done", {})
         except GeneratorExit:  # 客户端断连：记日志后正常关闭，不崩服务
             log.warning("SSE 客户端断连 thread_id=%s tokens=%d", thread_id, len(tokens))
             raise
+
+    def _dispatch(payload: dict) -> str:
+        nonlocal sources
+        if "sources" in payload:
+            sources = payload["sources"]
+            return _sse("sources", {"sources": sources})
+        if "budget" in payload:  # T04：预算观测事件（T06 Trace 复用）
+            return _sse("budget", payload["budget"])
+        tokens.append(payload["token"])
+        return _sse("token", {"token": payload["token"]})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
