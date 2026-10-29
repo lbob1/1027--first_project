@@ -1,0 +1,24 @@
+{
+  "description": "M-S3-T06 黄金测试集 QA 评测：12 条 QA（literal 4 / semantic 4 / both 4），语料复用 T05 三份（见 eval/cases.json）+ 新增第 4 份主题 doc_sec（数据安全与权限管理）。expect_answer_keywords 用于判定答案相关性（参考指标，LLM 生成有波动）。语料与用例均不含真实凭据/个人信息，可安全入 git。",
+  "corpus_extra": [
+    {
+      "filename": "doc_sec.txt",
+      "topic": "数据安全与权限管理",
+      "text": "数据安全是企业知识库系统的生命线。为防止未经授权的访问，系统应遵循最小权限原则：每个用户只应获得完成其职责所必需的访问权限，并在角色变化或离职时及时回收。身份认证解决的是确认操作者身份的问题，多因素认证结合密码、动态令牌与生物特征，大幅提高冒用的难度。访问控制列表与基于角色的权限模型是常见的授权方式，前者逐条记录资源与主体的关系，后者把权限抽象为角色便于批量管理。加密是数据保护的最后防线：传输层加密防止数据在网络中被窃听，存储层加密保证即使磁盘泄露也无法直接读取明文，密钥管理则决定了加密体系的有效性，密钥应与数据分离存放并定期轮换。审计日志记录每一次敏感操作的当事人、时间与内容，为事后追溯提供依据，日志本身也应受到保护以防篡改。数据备份与恢复演练让组织在勒索攻击或误删除等事故后能够恢复业务，备份副本应异地存放并定期验证可用性。"
+    }
+  ],
+  "cases": [
+    { "case_id": "L1", "query": "弹性伸缩是怎么计费的", "expect_filename": "doc_cloud.txt", "expect_mode": "literal", "expect_answer_keywords": ["按量计费", "包年包月"] },
+    { "case_id": "L2", "query": "共识机制有哪些方案", "expect_filename": "doc_chain.txt", "expect_mode": "literal", "expect_answer_keywords": ["工作量证明", "权益证明"] },
+    { "case_id": "L3", "query": "什么是过拟合", "expect_filename": "doc_ml.txt", "expect_mode": "literal", "expect_answer_keywords": ["泛化", "正则化"] },
+    { "case_id": "L4", "query": "可用区与容灾怎么规划", "expect_filename": "doc_cloud.txt", "expect_mode": "literal", "expect_answer_keywords": ["可用区", "容灾"] },
+    { "case_id": "S1", "query": "AI 模型训练方法", "expect_filename": "doc_ml.txt", "expect_mode": "semantic", "expect_answer_keywords": ["训练", "模型"] },
+    { "case_id": "S2", "query": "去中心化的电子记账方案", "expect_filename": "doc_chain.txt", "expect_mode": "semantic", "expect_answer_keywords": ["分布式账本", "区块"] },
+    { "case_id": "S3", "query": "流量高峰时如何应对服务器压力", "expect_filename": "doc_cloud.txt", "expect_mode": "semantic", "expect_answer_keywords": ["弹性伸缩", "实例"] },
+    { "case_id": "S4", "query": "如何防止模型在新数据上表现变差", "expect_filename": "doc_ml.txt", "expect_mode": "semantic", "expect_answer_keywords": ["过拟合", "正则化"] },
+    { "case_id": "B1", "query": "区块链智能合约如何运行", "expect_filename": "doc_chain.txt", "expect_mode": "both", "expect_answer_keywords": ["智能合约", "自动执行"] },
+    { "case_id": "B2", "query": "对象存储和内容分发网络", "expect_filename": "doc_cloud.txt", "expect_mode": "both", "expect_answer_keywords": ["对象存储", "内容分发"] },
+    { "case_id": "B3", "query": "检索增强生成如何降低模型编造", "expect_filename": "doc_ml.txt", "expect_mode": "both", "expect_answer_keywords": ["检索增强", "知识库"] },
+    { "case_id": "B4", "query": "网络隔离与加密存储", "expect_filename": "doc_sec.txt", "expect_mode": "both", "expect_answer_keywords": ["加密", "安全"] }
+  ]
+}
