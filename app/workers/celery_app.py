@@ -21,6 +21,7 @@ celery_app = Celery(
     "miniknora",
     broker=_settings.REDIS_URL,
     backend=_settings.REDIS_URL,
+    include=["app.workers.ingestion"],  # 摄取任务注册（M-S2-T04）
 )
 celery_app.conf.update(
     task_serializer="json",
