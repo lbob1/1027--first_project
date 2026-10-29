@@ -31,6 +31,10 @@ def unified(code: str, message: str, status: int, data=None) -> JSONResponse:
 
 app = FastAPI(title="MiniKnora")
 
+from app.api.status import router as status_router  # noqa: E402
+
+app.include_router(status_router)  # M-S2-T03：摄取状态查询（本任务唯一 main.py 改动）
+
 
 @app.get("/healthz")
 def healthz() -> dict:
