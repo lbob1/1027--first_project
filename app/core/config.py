@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = ""
     MINIO_BUCKET: str = "miniknora"
 
+    # ---------- 上传限制 ----------
+    MAX_UPLOAD_MB: int = 20  # 单文件大小上限（MB），S2-T06 早期快速失败用
+
     # ---------- 认证（S5 起使用） ----------
     JWT_SECRET_KEY: str = ""
 

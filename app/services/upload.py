@@ -1,8 +1,8 @@
-"""上传注册与增量判定（M-S2-T05）。
+"""上传注册与增量判定（M-S2-T05；T06 竞态修复）。
 
 选型说明：独立 services/upload.py（非塞进 version.py）——version.py 是
 纯版本状态域（create/activate/mark_failed），本模块是跨域编排
-（比对 + MinIO 存储 + Celery 派发），职责分离。
+（比对 + MinIO 存储），职责分离。
 
 流程 register_upload(session, user_id, workspace_id, document_id,
 filename, data)：
@@ -14,8 +14,11 @@ filename, data)：
    S2-AC-3）；
 5. 变更 → put_object（version_no 预查 max+1，与 create_new_version 内部
    分配一致；dev 单 worker 下竞态窗口可接受，注释在案）→
-   create_new_version（staging）→ 派发 ingest_version（返回 task id
-   供前端跟踪）。
+   create_new_version（staging）。
+
+**派发职责（T06 竞态修复）**：本函数不 .delay()——调用方必须在
+session 事务提交后自行 ingest_version.delay(str(version_id))，
+否则 worker 可能在版本行提交前消费（读不到 staging 行）。
 
 chunk 级去重（S2-AC-3 关联）落在 ingestion.py 组装处：**仅限单版本内**
 （跨版本复用 chunk 行会破坏"检索按 version 状态过滤"模型，O-2）。
@@ -32,7 +35,6 @@ from app.core.errors import AppError
 from app.models.models import Document, DocumentVersion, WorkspaceMember
 from app.services import storage
 from app.services import version as version_svc
-from app.workers.ingestion import ingest_version
 
 log = logging.getLogger("app.services.upload")
 
@@ -104,14 +106,15 @@ def register_upload(
         document_id=document_id,
         content_hash=digest, file_path=object_key,
     )
-    task = ingest_version.delay(str(version.version_id))
+    # 竞态修复（M-S2-T06）：**不在本事务内 .delay()**——worker 可能先于
+    # 版本行提交消费任务。落库职责止于此，派发责任在调用方（事务提交后
+    # ingest_version.delay(str(version_id))），见 app/api/documents.py。
     log.info(
-        "upload accepted document=%s new_version_no=%s task=%s",
-        document_id, version.version_no, task.id,
+        "upload accepted document=%s new_version_no=%s（待提交后派发）",
+        document_id, version.version_no,
     )
     return {
         "status": "accepted",
         "version_id": str(version.version_id),
         "version_no": version.version_no,
-        "task_id": task.id,  # 供前端经状态端点跟踪
     }
