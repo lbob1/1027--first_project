@@ -37,6 +37,16 @@ def unified(code: str, message: str, status: int, data=None) -> JSONResponse:
 
 app = FastAPI(title="MiniKnora")
 
+# 前端联调跨域放行（2026-10-30 决议：最小配合，不碰业务逻辑；"null" 覆盖 file:// 双击打开）
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "null"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 from app.api.status import router as status_router  # noqa: E402
 from app.api.documents import router as documents_router  # noqa: E402
 from app.api.chat import router as chat_router  # noqa: E402

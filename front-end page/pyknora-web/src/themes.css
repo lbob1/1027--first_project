@@ -1,0 +1,75 @@
+/* ===== 四套主题（CSS 变量驱动；data-theme 挂在 <html> 上） =====
+   paper  暖纸（默认）：米白底 + 墨字 + 朱红
+   light  纯白：白底 + 墨黑主按钮
+   dark   深黑：近黑底 + 亮字
+   aurora 彩虹·晨光：四色浅调渐变底 + 墨字（正文对比度≥7:1，按钮白字对光谱深档≥4.5:1） */
+
+:root,
+html[data-theme='paper'] {
+  color-scheme: light;
+  --bg: #faf6ef;
+  --bg-image: none;
+  --panel: #fffdf8;
+  --panel-2: #f1eadb;
+  --border: #e6ddcd;
+  --ink: #221f1b;
+  --muted: #7d7466;
+  --primary: #b23a24;
+  --primary-bg: none;
+  --accent: #b23a24;
+  --accent-soft: #f3e0da;
+  --ok: #2e6b3f;
+  --brandbar: #b23a24;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-image: none;
+  --panel: #fafafa;
+  --panel-2: #f0f0f2;
+  --border: #e3e3e7;
+  --ink: #1c1c1e;
+  --muted: #6e6e73;
+  --primary: #1c1c1e;
+  --primary-bg: none;
+  --accent: #b23a24;
+  --accent-soft: #f6e3de;
+  --ok: #2e6b3f;
+  --brandbar: #b23a24;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #141414;
+  --bg-image: none;
+  --panel: #1f1f23;
+  --panel-2: #26262b;
+  --border: #34343a;
+  --ink: #f2f2f0;
+  --muted: #a3a3ab;
+  --primary: #e0765a;
+  --primary-bg: none;
+  --accent: #e0765a;
+  --accent-soft: #3a2b25;
+  --ok: #7dc08f;
+  --brandbar: #e0765a;
+}
+
+html[data-theme='aurora'] {
+  color-scheme: light;
+  --bg: #f2edf7;
+  --bg-image: linear-gradient(135deg, #fdf3e7 0%, #fceef4 34%, #edf1fd 67%, #eafaf4 100%);
+  --panel: #fffefb;
+  --panel-2: #efe9f5;
+  --border: #e0d7ea;
+  --ink: #241f31;
+  --muted: #5f5875;
+  --primary: #7a4dd8;
+  /* 光谱深档渐变：每一段对白字对比度均 ≥ 4.5:1（首档实测 5.32） */
+  --primary-bg: linear-gradient(90deg, #9c5c0b, #c2453a, #b83d78, #7a4dd8, #3f5fc4, #1f7a6e);
+  --accent: #b83d78;
+  --accent-soft: #f6e3ef;
+  --ok: #1f7a6e;
+  --brandbar: linear-gradient(90deg, #9c5c0b, #c2453a, #b83d78, #7a4dd8, #3f5fc4, #1f7a6e);
+}

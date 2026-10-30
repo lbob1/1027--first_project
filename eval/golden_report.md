@@ -7,48 +7,46 @@
 |---|---|---|---|---|
 | literal | 4 | 1.000 | 1.000 | 0.750 |
 | semantic | 4 | 1.000 | 1.000 | 0.750 |
-| both | 4 | 1.000 | 0.750 | 0.750 |
-| **overall** | 12 | **1.000** | **0.917** | 0.750 |
+| both | 4 | 1.000 | 0.500 | 0.500 |
+| **overall** | 12 | **1.000** | **0.833** | 0.667 |
 
 ## 逐条明细
 
 | case | mode | query | 期望 | recall | 引用判定 | 解析来源 | kw 命中 | 答案末尾 |
 |---|---|---|---|---|---|---|---|---|
-| L1 | literal | 弹性伸缩是怎么计费的 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 出，而竞价实例则适合可中断的批处理任务。
+| L1 | literal | 弹性伸缩是怎么计费的 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 明显的负载，包年包月适合长期稳定的负载。
 
 【来源：doc_cloud.txt】 |
-| L2 | literal | 共识机制有哪些方案 | doc_chain.txt | 1 | √ | ['doc_chain.txt'] | 2/2 | 机制的常见方案包括工作量证明与权益证明。
+| L2 | literal | 共识机制有哪些方案 | doc_chain.txt | 1 | √ | ['doc_chain.txt'] | 2/2 | 问题，常见方案包括工作量证明与权益证明。
 
 【来源：doc_chain.txt】 |
-| L3 | literal | 什么是过拟合 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 0/2 | 调优与效果评估等流程，但并未说明什么是过拟合。
+| L3 | literal | 什么是过拟合 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 0/2 | 换拟合复杂函数等内容，但并未说明什么是过拟合。
 
 【来源：doc_ml.txt】 |
-| L4 | literal | 可用区与容灾怎么规划 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 地域备份则为极端灾难提供了最后一道保险。
+| L4 | literal | 可用区与容灾怎么规划 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 跨地域备份为极端灾难提供了最后一道保险。
 
 【来源：doc_cloud.txt】 |
-| S1 | semantic | AI 模型训练方法 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 2/2 | 括召回率与 F1 值，应结合业务目标综合选择。
+| S1 | semantic | AI 模型训练方法 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 2/2 | 衰减，定期使用新数据重新训练是必要的运维动作。
 
 【来源：doc_ml.txt】 |
-| S2 | semantic | 去中心化的电子记账方案 | doc_chain.txt | 1 | √ | ['doc_chain.txt'] | 2/2 | 与验证，仅需区块头即可确认交易的存在性。
+| S2 | semantic | 去中心化的电子记账方案 | doc_chain.txt | 1 | √ | ['doc_chain.txt'] | 2/2 | 公钥派生，私钥的保管责任完全在用户一方。
 
 【来源：doc_chain.txt】 |
-| S3 | semantic | 流量高峰时如何应对服务器压力 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 个机房故障时保持服务连续，增强容灾能力。
+| S3 | semantic | 流量高峰时如何应对服务器压力 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 采用按量计费模式，配合弹性伸缩策略使用。
 
 【来源：doc_cloud.txt】 |
-| S4 | semantic | 如何防止模型在新数据上表现变差 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 0/2 | 后持续监控线上表现，并定期使用新数据重新训练。
+| S4 | semantic | 如何防止模型在新数据上表现变差 | doc_ml.txt | 1 | √ | ['doc_ml.txt'] | 0/2 | 践中常用网格搜索或贝叶斯优化来寻找合适的组合。
 
 【来源：doc_ml.txt】 |
 | B1 | both | 区块链智能合约如何运行 | doc_chain.txt | 1 | √ | ['doc_chain.txt'] | 2/2 | 件时自动执行约定的逻辑，无需第三方介入。
 
 【来源：doc_chain.txt】 |
-| B2 | both | 对象存储和内容分发网络 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 。关于内容分发网络，资料中未涉及相关信息。
+| B2 | both | 对象存储和内容分发网络 | doc_cloud.txt | 1 | √ | ['doc_cloud.txt'] | 2/2 | 涉及相关信息，无法基于现有资料进行回答。
+
 【来源：doc_cloud.txt】 |
-| B3 | both | 检索增强生成如何降低模型编造 | doc_ml.txt | 1 | × | ['无'] | 1/2 | 供的资料中未涉及“检索增强生成”及其如何降低模型编造的相关内容。
+| B3 | both | 检索增强生成如何降低模型编造 | doc_ml.txt | 1 | × | ['doc_ml.txt, doc_sec.txt, doc_cloud.txt, doc_chain.txt'] | 1/2 | c_sec.txt, doc_cloud.txt, doc_chain.txt】 |
+| B4 | both | 网络隔离与加密存储 | doc_sec.txt | 1 | × | ['doc_sec.txt, doc_cloud.txt'] | 1/2 | 以回答该问题。
 
-【来源：无】 |
-| B4 | both | 网络隔离与加密存储 | doc_sec.txt | 1 | √ | ['doc_cloud.txt', 'doc_sec.txt'] | 2/2 | 信息。
+【来源：doc_sec.txt, doc_cloud.txt】 |
 
-【来源：doc_cloud.txt】
-【来源：doc_sec.txt】 |
-
-结论：recall@5=1.000、引用正确率=0.917，均达 ≥0.8 验收线；失败用例 ['B3'] 已逐条分析（见 STATUS 事件记录）。
+结论：recall@5=1.000、引用正确率=0.833，均达 ≥0.8 验收线；失败用例 ['B3', 'B4'] 已逐条分析（见 STATUS 事件记录）。

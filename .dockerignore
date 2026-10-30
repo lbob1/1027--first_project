@@ -32,6 +32,23 @@ eval/
 STATUS.md
 MiniKnora_任务计划表.md
 
+# 文档与代理配置（镜像无需）
+GUIDE.md
+README.md
+AGENTS.md
+00_MiniKnora_项目需求说明.md
+01_MiniKnora_分阶段执行计划.md
+
+# 本地环境变体与系统文件
+*.local
+.DS_Store
+Thumbs.db
+
+# 打包壳与工具配置（运行镜像不需要）
+src/
+.gitmodules
+.python-version
+
 # 容器编排自身与工作区配置
 compose.yaml
 .trae

@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-paper text-ink font-sans antialiased;
+}
+
+::selection {
+  @apply bg-accent-soft;
+}
+
+:focus-visible {
+  outline: 2px solid #b23a24;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Live 模拟器演示卡（CSS 变量参数旋钮驱动，--p-density / --p-color） ---------- */
+
+.demo-card {
+  --p-density: 50;
+  --p-color: 50;
+  background: #fffdf8;
+  border: 1px solid #e6ddcd;
+  padding: calc(16px + var(--p-density) * 0.14px);
+  transition:
+    padding 0.25s ease,
+    background 0.25s ease;
+}
+.demo-card.selectable:hover {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  cursor: pointer;
+}
+.demo-card.selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+.demo-card .demo-title {
+  font-size: calc(17px + var(--p-density) * 0.08px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.demo-card.v0 .demo-title {
+  /* 变体一：层级轴 —— 衬线大标题 */
+  font-family: Georgia, 'Songti SC', 'SimSun', serif;
+  font-weight: 500;
+  font-size: calc(20px + var(--p-density) * 0.1px);
+}
+.demo-card.v1 .demo-list {
+  /* 变体二：密度轴 —— 紧凑列表 */
+  gap: 2px;
+  font-size: 13px;
+}
+.demo-card .demo-cta {
+  background: #221f1b;
+  color: #faf6ef;
+  padding: calc(8px + var(--p-density) * 0.06px) 18px;
+  font-size: 14px;
+}
+.demo-card.v2 .demo-cta {
+  /* 变体三：色彩轴 —— 朱红主按钮与标题带 */
+  background: #b23a24;
+}
+.demo-card.v2 .demo-title {
+  color: #8f2c1a;
+}
+.demo-accentbar {
+  height: 6px;
+  width: 64px;
+  background: #b23a24;
+  opacity: calc(var(--p-color) / 100);
+  transition: opacity 0.2s ease;
+}
+.demo-v2band {
+  height: calc(6px + var(--p-color) * 0.1px);
+  background: #b23a24;
+  opacity: 0.85;
+}
+
+/* ---------- live 徽标 ---------- */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+/* ---------- 评审 loading 中的并行小动画 ---------- */
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.review-blink {
+  animation: blink 1.1s ease-in-out infinite;
+}

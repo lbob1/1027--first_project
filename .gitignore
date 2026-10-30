@@ -14,8 +14,20 @@ docs/teaching/**
 .env
 .idea/
 .pytest_cache/
+.ruff_cache/
+.trae/
+.claude/
+
+# 本地环境变体与系统文件
+*.local
+.DS_Store
+Thumbs.db
 
 # Coverage artifacts（M-S5-T03）
 .coverage
 coverage.json
 htmlcov/
+
+# 前端依赖（Web 工程的 dist 单文件成品用 git add -f 单独入库）
+node_modules/
+front-end page/pyknora-web/.env
