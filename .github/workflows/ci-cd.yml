@@ -46,16 +46,15 @@ jobs:
             [ "$i" = 30 ] && exit 1
             sleep 2
           done
-          # MinIO：quay.io 对 GitHub 共享出口 IP 匿名拉取返回 401，改用官方二进制直接运行
-          curl -fsSL --retry 3 -o /tmp/minio https://dl.min.io/server/minio/release/linux-amd64/minio \
-            || curl -fsSL --retry 3 -o /tmp/minio https://github.com/minio/minio/releases/download/RELEASE.2024-06-13T22-53-53Z/minio.linux-amd64
-          chmod +x /tmp/minio
-          mkdir -p /tmp/minio-data
-          MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
-            /tmp/minio server /tmp/minio-data --address :9000 >/tmp/minio.log 2>&1 &
+          # MinIO 社区版 2025-10 起停发（官方 quay.io/docker.io 仓库已清空，dl.min.io 返回 410），
+          # 改用活跃维护的分叉 pgsty/minio（drop-in 兼容：同 env、同 server 命令、同端口）
+          docker pull pgsty/minio:RELEASE.2026-06-18T00-00-00Z
+          docker run -d --name ci-minio \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            -p 9000:9000 pgsty/minio:RELEASE.2026-06-18T00-00-00Z server /data
           for i in $(seq 1 30); do
             curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1 && break
-            [ "$i" = 30 ] && { cat /tmp/minio.log; exit 1; }
+            [ "$i" = 30 ] && { docker logs ci-minio; exit 1; }
             sleep 2
           done
           echo "infra ready"
