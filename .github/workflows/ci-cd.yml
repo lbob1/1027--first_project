@@ -158,6 +158,30 @@ jobs:
           target: /opt/miniknora/frontend
           overwrite: true
 
+      # 服务器直连 ghcr.io 长连接僵死（跨境），改为 runner 内网秒级拉取后打包直传
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and pack image
+        run: |
+          docker pull ghcr.io/lbob1/1027--first_project:latest
+          docker save ghcr.io/lbob1/1027--first_project:latest | gzip > miniknora-image.tar.gz
+          ls -lh miniknora-image.tar.gz
+
+      - name: Transfer image to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "miniknora-image.tar.gz"
+          target: /opt/miniknora/
+          overwrite: true
+
       - name: Rollout and verify
         uses: appleboy/ssh-action@v1
         with:
@@ -168,9 +192,8 @@ jobs:
           script: |
             set -e
             cd /opt/miniknora
-            set -a; source .env.deploy; set +a
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u lbob1 --password-stdin
-            docker compose --env-file .env -f compose.yaml -f compose.prod.yml pull api worker caddy
+            gunzip -c miniknora-image.tar.gz | docker load
+            rm -f miniknora-image.tar.gz
             docker compose --env-file .env -f compose.yaml -f compose.prod.yml up -d --wait
             curl -fsS http://127.0.0.1:8000/healthz
             echo "DEPLOY_OK ${{ github.sha }}"
