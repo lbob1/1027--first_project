@@ -7,6 +7,12 @@ rollback，数据天然消失。理由：① 零残留由机制保证而非靠�
 
 连接的是真实本地 PG（miniknora_li），不建新库、不动表结构。
 
+**模型 API 依赖说明（M-S5-T03）**：检索/摄取组测试走百炼真实 API
+（embedding/LLM），key 从 .env 读——本文件不对任何模型密钥做兜底注入；
+CI / 无网环境该两组用例预期失败，属已知取舍（各测试文件 docstring 注明）。
+下方 JWT_SECRET_KEY setdefault 仅测试进程兜底（.env 已配置则不覆盖，
+不触 .env 文件本体）。
+
 M-S5-T02 补充（JWT 化）：
 - smoke 测试改走 HTTP + Bearer（TestClient），需 decode_token——密钥从
   配置读；此处 env setdefault 仅测试进程兜底（用户 .env 已配置则不覆盖，

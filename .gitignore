@@ -14,3 +14,8 @@ docs/teaching/**
 .env
 .idea/
 .pytest_cache/
+
+# Coverage artifacts（M-S5-T03）
+.coverage
+coverage.json
+htmlcov/

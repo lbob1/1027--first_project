@@ -2,6 +2,10 @@
 
 负例断言计数（S1-AC-5 要求 ≥6，本文件共 14 条 AppError/空列表断言，
 逐条标注于各测试 docstring 的「负例 N」标记）。
+
+M-S5-T03 扩展：文档删除阻断 KN-409 组（模型/删除语义，service 层冒烟，
+负例 14 + 配套正例）——版本不可变行为级快照 S1 已有
+（test_version_content_fields_only_set_on_insert），按任务书跳过不重复。
 """
 
 import inspect
@@ -257,6 +261,42 @@ def test_version_positive_flow_and_pointer(session, factory):
     assert v1.status == "retired"
     assert v2.status == "active"
     assert doc.active_version == v2.version_id
+
+
+# ---------- 文档删除阻断 KN-409（M-S5-T03 扩展，service 层冒烟） ----------
+
+def test_delete_document_blocked_with_versions_409(session, factory):
+    """负例 14：有版本的文档删除 → KN-409（阻断式，M-S4-T05 语义固化）。"""
+    alice = factory.user()
+    ws = factory.workspace(alice)
+    doc = factory.document(alice, ws)
+    factory.version(alice, ws, doc, tag="v")  # 有版本 → 阻断
+    with pytest.raises(AppError) as ei:
+        doc_svc.delete_document(
+            session, user_id=alice.user_id, workspace_id=ws.workspace_id,
+            document_id=doc.document_id,
+        )
+    assert ei.value.code == "KN-409"
+    session.refresh(doc)
+    assert session.get(Document, doc.document_id) is not None  # 未被删除
+
+
+def test_delete_document_without_versions_ok(session, factory):
+    """配套正例：无版本文档删除成功（审批闭环删除执行的行为基线）。"""
+    alice = factory.user()
+    ws = factory.workspace(alice)
+    doc = factory.document(alice, ws)
+    doc_svc.delete_document(
+        session, user_id=alice.user_id, workspace_id=ws.workspace_id,
+        document_id=doc.document_id,
+    )
+    # count 探针（autoflush 先落 pending delete）：session.get 会命中
+    # identity map 的未 flush 删除对象，不能作为删除生效依据
+    n = session.execute(
+        select(func.count()).select_from(Document)
+        .where(Document.document_id == doc.document_id)
+    ).scalar_one()
+    assert n == 0
 
 
 # ---------- 全局零残留证明（必须在最后一个位置：查真实库状态） ----------
