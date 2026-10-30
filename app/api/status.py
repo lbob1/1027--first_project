@@ -4,8 +4,10 @@
 GET /api/v1/workspaces/{workspace_id}/documents/{document_id}/status
 → 统一 {code, message, data}；data 含该文档各版本的 status（四态）。
 
-- 身份：X-User-ID 请求头传入（O-7 dev 过渡方案；**S5 替换点：JWT 解析
-  后此处改为依赖注入当前用户**）；角色判定只查 workspace_members（细则 3）；
+- 身份：JWT 认证（M-S5-T02 起）——Authorization: Bearer →
+  get_current_user_id 依赖注入，过渡身份头已退役（即使传入也不读取，
+  身份唯一来源是 Bearer token）；
+  角色判定只查 workspace_members（细则 3）；
 - 隔离：workspace_id + document_id 直接进 SQL WHERE；非成员与不存在的
   文档一律 KN-404（细则 1，不泄露跨区存在性）；
 - staging 版本附 pending 提示（S2-AC-5 不静默失败）：文案覆盖"处理中
@@ -20,10 +22,11 @@ GET /api/v1/workspaces/{workspace_id}/documents/{document_id}/status
 import logging
 import uuid
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_user_id
 from app.core.db import get_session
 from app.core.errors import AppError
 from app.models.models import Document, DocumentVersion, WorkspaceMember
@@ -56,13 +59,8 @@ def _require_member(
 def get_ingestion_status(
     workspace_id: uuid.UUID,
     document_id: uuid.UUID,
-    x_user_id: str = Header(alias="X-User-ID"),  # O-7 dev 过渡；S5 换 JWT
+    user_id: uuid.UUID = Depends(get_current_user_id),  # M-S5-T02：JWT 依赖注入
 ):
-    try:
-        user_id = uuid.UUID(x_user_id)
-    except ValueError as exc:
-        raise AppError("KN-400", "X-User-ID 非法 UUID") from exc
-
     with get_session() as session:
         _require_member(session, user_id=user_id, workspace_id=workspace_id)
         doc = session.execute(

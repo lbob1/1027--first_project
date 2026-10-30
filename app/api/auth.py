@@ -4,8 +4,8 @@
   错误返回同一错误响应**（同 code 同 message，不泄露用户名存在性——
   细则 1"不泄露存在性"思想延伸到用户维度）；
 - get_current_user_id：FastAPI 依赖，解析 Authorization: Bearer →
-  decode_token → uuid.UUID（T02 批量接入业务端点用，本任务不改业务
-  端点，避免半切换状态）；
+  decode_token → uuid.UUID（M-S5-T02 起接入全部业务端点——status/
+  documents/chat，过渡身份头彻底退役，身份唯一来源是 Bearer token）；
 - **无注册端点**（00 契约未定义 POST /auth/register 等）：dev 用户经
   脚本直接造（security.hash_password 写 users 表）——dev 路径，生产
   需补用户管理流程（S6 观察项）；

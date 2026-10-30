@@ -1,7 +1,11 @@
 """上传 API（M-S2-T06，S2 收尾）：POST /api/v1/workspaces/{ws}/documents。
 
 - multipart/form-data：file 必填 + document_id 可选；
-- 身份：X-User-ID 请求头（O-7 dev 过渡，S5 换 JWT——全局唯一替换点）；
+- 身份：JWT 认证（M-S5-T02 起）——Authorization: Bearer →
+  get_current_user_id 依赖注入，过渡身份头已退役（即使传入也不读取，
+  身份唯一来源是 Bearer token）；
+  成员判定在 service 层（create_document/register_upload 内
+  _require_member，身份源变化判定逻辑零变化）；
 - 表单语义（任务书规则）：带 document_id → 向既有文档追加版本（增量判定）；
   不带 → 先 create_document（filename 作文档名）再 register_upload；
 - 早期快速失败（不写 MinIO 不派任务）：扩展名白名单（parser 支持集：
@@ -17,8 +21,9 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
+from app.api.auth import get_current_user_id
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.errors import AppError
@@ -33,21 +38,13 @@ router = APIRouter(prefix="/api/v1", tags=["documents"])
 ALLOWED_EXTS = {".pdf", ".docx", ".md", ".txt"}
 
 
-def _parse_user_id(x_user_id: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(x_user_id)
-    except (ValueError, AttributeError, TypeError):
-        raise AppError("KN-400")
-
-
 @router.post("/workspaces/{workspace_id}/documents")
 async def upload_document(
     workspace_id: uuid.UUID,
-    x_user_id: str = Header(...),
     file: UploadFile = File(...),
     document_id: uuid.UUID | None = Form(None),
+    user_id: uuid.UUID = Depends(get_current_user_id),  # M-S5-T02：JWT 依赖注入
 ):
-    user_id = _parse_user_id(x_user_id)
     filename = file.filename or ""
     ext = Path(filename).suffix.lower()
 

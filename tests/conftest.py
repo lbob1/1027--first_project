@@ -6,19 +6,31 @@ rollback，数据天然消失。理由：① 零残留由机制保证而非靠�
 ② T02/T03 的手工逆序清理已两次踩 FK 顺序坑；③ 实现更简单。
 
 连接的是真实本地 PG（miniknora_li），不建新库、不动表结构。
+
+M-S5-T02 补充（JWT 化）：
+- smoke 测试改走 HTTP + Bearer（TestClient），需 decode_token——密钥从
+  配置读；此处 env setdefault 仅测试进程兜底（用户 .env 已配置则不覆盖，
+  不触 .env 文件本体）；
+- smoke_password_hash（session 级）：bcrypt hash 一次全 session 复用，
+  避免每用例重复 ~100ms 的 hash_password（任务书要求）；
+- issue_jwt（session 级）：token 签发器直接暴露（HMAC 亚毫秒级，无需缓存）。
 """
 
+import os
 import uuid
 from collections.abc import Iterator
 
-import pytest
-from sqlalchemy.orm import Session, sessionmaker
+os.environ.setdefault("JWT_SECRET_KEY", "s5t02-test-only-secret")  # 测试兜底
 
-from app.core.db import get_engine
-from app.models.models import User
-from app.services import document as doc_svc
-from app.services import version as ver_svc
-from app.services import workspace as ws_svc
+import pytest  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+
+from app.core.db import get_engine  # noqa: E402
+from app.core.security import hash_password, issue_token  # noqa: E402
+from app.models.models import User  # noqa: E402
+from app.services import document as doc_svc  # noqa: E402
+from app.services import version as ver_svc  # noqa: E402
+from app.services import workspace as ws_svc  # noqa: E402
 
 
 @pytest.fixture
@@ -74,3 +86,15 @@ class Factory:
 @pytest.fixture
 def factory(session: Session) -> Factory:
     return Factory(session)
+
+
+@pytest.fixture(scope="session")
+def smoke_password_hash() -> str:
+    """session 级 bcrypt hash：一次计算全 session 复用（M-S5-T02）。"""
+    return hash_password("s5t02-smoke-password")
+
+
+@pytest.fixture(scope="session")
+def issue_jwt():
+    """token 签发器：issue(user_id) -> str（HMAC 亚毫秒级，无需缓存）。"""
+    return issue_token

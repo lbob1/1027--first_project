@@ -5,7 +5,8 @@ fn(session, *, workspace_id, user_id=None, **arguments)——session、
 workspace_id 与 user_id 由 execute 的框架层传入注入，工具函数签名**不接受
 调用方传 workspace**，杜绝 LLM 编造参数越权访问他区（细则 1：LLM 可控的
 只有 arguments，workspace 上下文永远由服务端决定）。M-S4-T05 扩展：
-user_id 为当前请求用户（chat.py 入口经 X-User-ID 校验成员后传入），供
+user_id 为当前请求用户（chat.py 入口经 JWT 认证与成员判定后传入，
+M-S5-T02 起身份唯一来源 Bearer token），供
 审批类工具调用 service 层成员判定使用——与 workspace 同属框架注入，
 LLM 不可控；只读工具不需要用户身份，形参占位保持签名统一。
 

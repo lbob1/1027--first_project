@@ -8,7 +8,10 @@ POST /api/v1/workspaces/{workspace_id}/chat，body {question, top_k?}：
   多个 event: token → event: budget（T04）→ event: trace（T06，done 前）
   → event: done；审批挂起 run 专有 event: approval_required（T05，
   随后 trace→done，无 token/budget）；
-- X-User-ID dev 过渡头（S5 换 JWT，与既有 API 一致）；
+- 身份：JWT 认证（M-S5-T02 起）——Authorization: Bearer →
+  get_current_user_id 依赖注入，过渡身份头已退役（即使传入也不读取，
+  身份唯一来源是 Bearer token）——
+  user_id 在流外解析完成才进 generator，SSE 流内部零改动；
 - **messages 落库**：答案流出完成后同事务写一条（thread_id=本请求 uuid，
   role='assistant'，content=完整答案，citations=sources）；落库失败不影响
   已流出的答案（catch 后 log）；
@@ -20,11 +23,12 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.api.auth import get_current_user_id
 from app.core.db import get_session
 from app.core.errors import AppError
 from app.models.models import Message, WorkspaceMember
@@ -61,11 +65,10 @@ def _sse(event: str, payload: dict) -> str:
 async def chat(
     workspace_id: uuid.UUID,
     body: ChatRequest,
-    x_user_id: str = Header(...),
+    user_id: uuid.UUID = Depends(get_current_user_id),  # M-S5-T02：JWT 依赖注入
 ):
     if not body.question.strip():
         raise AppError("KN-400")
-    user_id = uuid.UUID(x_user_id)
     with get_session() as session:
         _require_member(session, user_id=user_id, workspace_id=workspace_id)
 
