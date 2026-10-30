@@ -1,9 +1,34 @@
-# MiniKnora 基础服务编排（M-S0-T02）
+# MiniKnora 基础服务编排（M-S0-T02，M-S6-T01 扩展 api/worker 两应用服务）
 # 三基础服务完整复用原项目选型：PostgreSQL(pgvector) / Redis / MinIO，禁止替换组件（00 文件第二节）。
 # 凭据经仓库根 .env 注入（docker compose 自动读取 .env 做变量插值），本文件不含任何明文密码。
 # 所需变量（只列名）：POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD
+# 应用服务额外变量（M-S6-T01，经 ${VAR} 从 .env 插值透传）：OPENAI_API_KEY / JWT_SECRET_KEY /
+#   MINIO_ACCESS_KEY / MINIO_SECRET_KEY 等，清单见下方 x-app-env anchor 注释。
 # 镜像版本说明：MinIO 固定 tag 曾选 2025-04-22 版，因国内镜像加速器对其 blob 返回 403（许可证限制），
 # 改用可正常拉取的 RELEASE.2024-06-13T22-53-53Z（仍为官方 minio/minio 镜像，功能满足本项目需求）。
+
+# 容器网络主机名覆盖（M-S6-T01 核心坑位）：宿主 .env 中 DATABASE_URL / REDIS_URL /
+# MINIO_ENDPOINT 指向 localhost，容器内服务互访必须用 compose 服务名（pg/redis/minio）。
+# 方案取舍：compose environment 显式覆盖这三个 URL（凭据部分经 ${VAR} 从宿主 .env 插值拼接），
+# 不新增 .env.docker 凭据文件——.env 是唯一凭据来源，避免第二份真实凭据落盘/误入库的风险；
+# 其余应用变量原值透传。api 与 worker 共用同一份环境（YAML anchor 去重）。
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?请在.env中配置 POSTGRES_USER}:${POSTGRES_PASSWORD}@pg:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  MINIO_ENDPOINT: minio:9000
+  OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:?请在.env中配置 OPENAI_API_KEY}
+  CHAT_MODEL: ${CHAT_MODEL:-}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+  EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+  RERANK_MODEL: ${RERANK_MODEL:-gte-rerank-v2}
+  RERANK_ENABLED: ${RERANK_ENABLED:-true}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?请在.env中配置 MINIO_ACCESS_KEY}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?请在.env中配置 MINIO_SECRET_KEY}
+  MINIO_BUCKET: ${MINIO_BUCKET:-miniknora}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在.env中配置 JWT_SECRET_KEY}
+  JWT_EXPIRE: ${JWT_EXPIRE:-1800}
 
 services:
   pg:
@@ -57,6 +82,58 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    networks:
+      - miniknora
+
+  # ---------- 应用服务（M-S6-T01）：与三基础服务同镜像同网络 ----------
+  api:
+    build: .
+    container_name: miniknora-api
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # init_db 方案取舍：包在 api command 里串行执行（init_db 幂等可重复），相比
+    # 独立 one-shot 服务少一个容器、少一条 service_completed_successfully 依赖链，
+    # 表就绪先于 uvicorn 接流；exec 让 uvicorn 接管 PID 1 以正确接收 SIGTERM。
+    command: sh -c "python -m app.models.init_db && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      # slim 镜像无 curl：用项目依赖自带的 httpx 以 python -c 内置方式探测 /healthz
+      test: ["CMD", "python", "-c", "import sys,httpx; sys.exit(0 if httpx.get('http://127.0.0.1:8000/healthz', timeout=3).status_code == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - miniknora
+
+  worker:
+    build: .
+    container_name: miniknora-worker
+    environment: *app-env
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # 同镜像不同 command：容器内是 Linux，--pool=solo 是 Windows 专属参数
+    #（规避 Windows fork 限制）不再需要，恢复 celery 默认 prefork 池。
+    command: celery -A app.workers.celery_app worker -l info
+    healthcheck:
+      # worker 无 HTTP 端点：用 celery inspect ping 自证消费存活
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
     networks:
       - miniknora
 

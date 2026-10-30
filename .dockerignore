@@ -19,6 +19,11 @@ __pycache__
 .pytest_cache
 .ruff_cache
 
+# 覆盖率产物（M-S5-T03 起，M-S6-T01 复核追加）
+.coverage
+coverage.json
+htmlcov/
+
 # 教学资料与开发目录（不参与运行镜像）
 references/
 docs/
