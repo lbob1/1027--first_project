@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # ---------- 认证（S5 起使用） ----------
     JWT_SECRET_KEY: str = ""
+    JWT_EXPIRE: int = 1800  # token 有效期（秒），S5-T01 起使用
 
 
 @lru_cache

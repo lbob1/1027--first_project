@@ -21,6 +21,10 @@ setup_logging()
 logger = logging.getLogger("app.main")
 get_settings()  # 启动即校验必填变量（OPENAI_API_KEY / DATABASE_URL）
 
+from app.core.security import warn_if_secret_missing  # noqa: E402
+
+warn_if_secret_missing()  # M-S5-T01：JWT 密钥缺失启动 warning（认证调用 fail-fast）
+
 
 def unified(code: str, message: str, status: int, data=None) -> JSONResponse:
     """统一响应结构（00 文件第十一节）。"""
@@ -34,10 +38,12 @@ app = FastAPI(title="MiniKnora")
 from app.api.status import router as status_router  # noqa: E402
 from app.api.documents import router as documents_router  # noqa: E402
 from app.api.chat import router as chat_router  # noqa: E402
+from app.api.auth import router as auth_router  # noqa: E402
 
 app.include_router(status_router)  # M-S2-T03：摄取状态查询
 app.include_router(documents_router)  # M-S2-T06：上传 API
-app.include_router(chat_router)  # M-S3-T04：SSE 流式问答（本任务唯一 main.py 改动）
+app.include_router(chat_router)  # M-S3-T04：SSE 流式问答
+app.include_router(auth_router)  # M-S5-T01：JWT 登录（本任务唯一 main.py 路由改动）
 
 
 @app.get("/healthz")
