@@ -83,6 +83,7 @@ from app.core.gateway import ModelGateway
 from app.core.policy import PolicyEngine
 from app.core.tool_registry import build_default_registry
 from app.core.trace import RunTracer, finish_and_log, safe_error_type
+from app.core.metrics import record_llm_tokens  # M-S6-T02：run 收尾 token 累计
 
 log = logging.getLogger("app.graphs.agent_graph")
 
@@ -451,9 +452,11 @@ def stream_answer(
         if exc.code == "KN-429":
             tracer.record_event("budget_exceeded", {})
         data = finish_and_log(tracer, gateway, budget)
+        record_llm_tokens(gateway.prompt_tokens, gateway.completion_tokens)  # M-S6-T02：全局 token 累计
         if emitted and data is not None:
             yield {"trace": data}
         raise
     data = finish_and_log(tracer, gateway, budget)  # 硬约束：失败返回 None 不影响主流程
+    record_llm_tokens(gateway.prompt_tokens, gateway.completion_tokens)  # M-S6-T02：全局 token 累计
     if data is not None:
         yield {"trace": data}

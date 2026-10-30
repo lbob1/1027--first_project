@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 
 from app.core.config import get_settings
 from app.core.errors import AppError, ERROR_TABLE
@@ -22,6 +23,7 @@ logger = logging.getLogger("app.main")
 get_settings()  # 启动即校验必填变量（OPENAI_API_KEY / DATABASE_URL）
 
 from app.core.security import warn_if_secret_missing  # noqa: E402
+from app.core.metrics import exposition, request_latency_middleware  # noqa: E402
 
 warn_if_secret_missing()  # M-S5-T01：JWT 密钥缺失启动 warning（认证调用 fail-fast）
 
@@ -44,6 +46,7 @@ app.include_router(status_router)  # M-S2-T03：摄取状态查询
 app.include_router(documents_router)  # M-S2-T06：上传 API
 app.include_router(chat_router)  # M-S3-T04：SSE 流式问答
 app.include_router(auth_router)  # M-S5-T01：JWT 登录（本任务唯一 main.py 路由改动）
+app.middleware("http")(request_latency_middleware)  # M-S6-T02：请求指标+日志（打点 try/except 不影响业务）
 
 
 @app.get("/healthz")
@@ -54,6 +57,12 @@ def healthz() -> dict:
         "message": "ok",
         "data": {"service": "MiniKnora", "version": "0.1.0"},
     }
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    """监控端点（M-S6-T02）：exposition 格式聚合值，认证豁免（理由见 metrics.exposition）。"""
+    return exposition()
 
 
 @app.exception_handler(AppError)
