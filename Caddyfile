@@ -1,0 +1,38 @@
+{
+	email l026814@outlook.com
+}
+
+lbobagent.icu {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 180s
+			}
+		}
+	}
+
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	handle /metrics {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+	}
+}

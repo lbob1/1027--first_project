@@ -1,0 +1,34 @@
+services:
+  api:
+    image: ghcr.io/lbob1/1027--first_project:latest
+    restart: always
+
+  worker:
+    image: ghcr.io/lbob1/1027--first_project:latest
+    command: celery -A app.workers.celery_app worker -l info --concurrency=1
+    restart: always
+
+  pg:
+    restart: always
+
+  redis:
+    restart: always
+
+  minio:
+    restart: always
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./frontend:/srv/frontend:ro
+
+volumes:
+  caddy_data:
+  caddy_config:
