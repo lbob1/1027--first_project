@@ -39,6 +39,18 @@ from app.services import version as ver_svc  # noqa: E402
 from app.services import workspace as ws_svc  # noqa: E402
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_minio_bucket() -> Iterator[None]:
+    """CI 冷启动 MinIO 为全新实例（无既有 bucket）：session 级幂等建桶。
+
+    复用生产同款 ensure_bucket（S2-T01 启动逻辑），本地已有桶时为 no-op。
+    """
+    from app.services.storage import ensure_bucket
+
+    ensure_bucket()
+    yield
+
+
 @pytest.fixture
 def session() -> Iterator[Session]:
     """每测试独立 savepoint 事务：结束整体 rollback，天然零残留。"""
