@@ -175,15 +175,22 @@ jobs:
           docker save ghcr.io/lbob1/1027--first_project:latest | gzip > miniknora-image.tar.gz
           ls -lh miniknora-image.tar.gz
 
+      # 跨境大文件直传易断流（实测 scp 1.5h 未完成）：改 rsync 断点续传 + 重试循环
       - name: Transfer image to server
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "miniknora-image.tar.gz"
-          target: /opt/miniknora/
-          overwrite: true
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          echo "$SSH_KEY" > ssh_key && chmod 600 ssh_key
+          SSH_OPTS="-i ssh_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+          n=0
+          until rsync -e "ssh $SSH_OPTS" --partial --append --timeout=90 \
+              miniknora-image.tar.gz "$SSH_USER@$SSH_HOST:/opt/miniknora/"; do
+            n=$((n+1)); [ $n -ge 40 ] && echo "retries exhausted" && exit 1
+            echo "::notice::transfer interrupted, resuming (attempt $n)"
+            sleep 5
+          done
 
       - name: Rollout and verify
         uses: appleboy/ssh-action@v1
