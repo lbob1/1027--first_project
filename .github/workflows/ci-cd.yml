@@ -46,10 +46,11 @@ jobs:
             [ "$i" = 30 ] && exit 1
             sleep 2
           done
-          pull minio/minio:RELEASE.2024-06-13T22-53-53Z
+          # MinIO 已从 Docker Hub 迁移到 quay.io（Hub 侧旧 tag 已删）
+          pull quay.io/minio/minio:RELEASE.2024-06-13T22-53-53Z
           docker run -d --name ci-minio \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            -p 9000:9000 minio/minio:RELEASE.2024-06-13T22-53-53Z
+            -p 9000:9000 quay.io/minio/minio:RELEASE.2024-06-13T22-53-53Z
           for i in $(seq 1 30); do
             curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1 && break
             [ "$i" = 30 ] && exit 1

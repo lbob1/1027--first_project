@@ -66,7 +66,8 @@ services:
       - miniknora
 
   minio:
-    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    # MinIO 2025 年起社区镜像仅发布于 quay.io（Docker Hub 旧 tag 已删除）
+    image: quay.io/minio/minio:RELEASE.2024-06-13T22-53-53Z
     container_name: miniknora-minio
     command: server /data --console-address ":9001"
     environment:
