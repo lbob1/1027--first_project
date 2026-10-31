@@ -3,6 +3,11 @@
 }
 
 lbobagent.icu {
+	# 手动证书（腾讯云免费证书，M 部署轮）：境外 ACME http-01/tls-alpn 验证
+	# 被跨境链路拦截（43.174.225.201 注入/重置），改用 DNS 验证签发的静态证书。
+	# 有效期 90 天，到期前需重新申请并替换 /certs 下两个文件后重启 caddy。
+	tls /certs/lbobagent.icu_bundle.crt /certs/lbobagent.icu.key
+
 	encode zstd gzip
 
 	header {
